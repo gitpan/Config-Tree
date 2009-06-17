@@ -1,0 +1,3 @@
+# will not validate file1
+- hash
+- allowed_keys: [x]

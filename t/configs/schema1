@@ -1,0 +1,7 @@
+- hash
+- allowed_keys: [i, s, a, h, h2]
+  keys:
+    i: int
+    s: str
+    a: [array, {of: int}]
+    h: [hash, {allowed_keys: [i, s2], keys: {i: int, s2: str}}]
