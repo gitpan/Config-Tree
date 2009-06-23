@@ -7,7 +7,7 @@ use Test::More tests => 44;
 use Test::Exception;
 use Data::Dumper; $Data::Dumper::Indent=1; $Data::Dumper::Terse=1;
 use FindBin '$Bin';
-use YAML;
+use YAML::XS;
 
 BEGIN {
     use_ok('Config::Tree::Multi');

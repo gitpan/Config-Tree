@@ -22,6 +22,8 @@ use Data::Schema;
 
 =cut
 
+has name => (is => 'rw');
+
 has ro => (is => 'ro', default => 1);
 has modified => (is => 'rw', default => 0);
 has when_invalid => (is => 'rw', default => 'die');
@@ -179,30 +181,42 @@ The default implementation can handle hash prefix a la Data::PrefixMerge.
 
 sub get {
     my ($self, $path) = @_;
+    my @res = $self->_get_with_key($path);
+    return unless @res;
+    die "BUG: _get_with_key doesn't return a 2-element list" unless @res == 2;
+    $res[1];
+}
+
+# instead of just returning $val, returns a list ($key, $val) where $key is the
+# key of the last branch (which might contain prefix).
+
+sub _get_with_key {
+    my ($self, $path) = @_;
     $path = $self->normalize_path($path);
     return if $self->path_is_excluded($path);
     my ($tree_path, $tree, $mtime) = $self->get_tree_for($path);
     return unless defined($tree);
     die "get: cannot get config tree for `$path`, got `$tree_path`" unless index($path, $tree_path) == 0;
     my $curpath = $tree_path eq '/' ? '' : $tree_path;
+    my $key = "";
     for (grep {length} split m!/+!, substr($path, length($tree_path))) {
         $curpath .= "/$_";
         #use Data::Dumper; print "get($path): $curpath: tree=",Dumper($tree),"\n";
         return if $self->path_is_excluded($curpath);
         if (ref($tree) eq 'HASH') {
-            my $t;
-            for my $prefix ("", "*", "-", "+", ".", "!") {
-                $t = $tree->{"$prefix$_"};
-                last if defined($t);
+            for my $prefix ("", "*", "-", "+", ".", "^", "!") {
+                $key = "$prefix$_";
+                last if defined($tree->{$key});
             }
-            $tree = $t;
+            $tree = $tree->{$key};
         } elsif (ref($tree) eq 'ARRAY' && /^\d+$/) {
+            $key = $_;
             $tree = $tree->[$_];
         } else {
             return;
         }
     }
-    $tree;
+    ($key, $tree);
     # XXX clone?
 }
 

@@ -5,7 +5,7 @@ use warnings;
 use Test::More tests => 11;
 use FindBin '$Bin';
 use File::Slurp;
-use YAML;
+use YAML::XS;
 
 BEGIN {
     use_ok('Config::Tree::Base');

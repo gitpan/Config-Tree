@@ -2,12 +2,12 @@
 
 use strict;
 use warnings;
-use Test::More tests => 26;
+use Test::More tests => 37;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
 use File::Temp qw/tempfile/;
-use YAML;
+use YAML::XS;
 
 BEGIN {
     use_ok('Config::Tree::File');
@@ -99,6 +99,61 @@ is($c->{a}[0], 2, "unset 3");
 
 dies_ok(sub { $conf->set("i", "a"); $conf->save }, "set invalid");
 dies_ok(sub { $conf->set("/", "a"); $conf->save }, "set root");
+
+SKIP: {
+    ($fh, $filename) = tempfile();
+    write_file($filename, "a: 1\n");
+    my ($fh2, $filename2) = tempfile();
+    unlink $filename2; eval { symlink $filename, $filename2 };
+    skip "doesn't support symlink()", 6+3 if $@;
+
+    my $conf0;
+    my $conf1 = Config::Tree::File->new(path=>$filename2, allow_symlink=>1);
+    my $conf2 = Config::Tree::File->new(path=>$filename2, allow_symlink=>2);
+
+    dies_ok (sub { $conf0 = Config::Tree::File->new(path=>$filename2, allow_symlink=>0); }, "allow_symlink=0, read1");
+    lives_ok(sub { $conf1->get("a") }, "allow_symlink=1, read1");
+    lives_ok(sub { $conf2->get("a") }, "allow_symlink=2, read1");
+
+    # symlinks are ok here because we unlink+create
+    my ($fh3, $filename3) = tempfile();
+    write_file($filename3, "a: 1\n");
+    my $conf0r = Config::Tree::File->new(path=>$filename3, allow_symlink=>0, ro=>0);
+    is($conf0r->get("a"), 1, "allow_symlink=0, write1a");
+    unlink $filename2; eval { symlink $filename, $filename3 };
+    lives_ok(sub { $conf0r->set("a", 2); $conf0r->save }, "allow_symlink=0, write1b");
+    $c = Load(scalar read_file $filename3);
+    is($c->{a}, 2, "allow_symlink=0, write1c");
+
+    SKIP: {
+        skip "must run as root to test allow_different_owner", 3 unless $> == 0;
+
+        my ($fhb, $filenameb) = tempfile();
+        write_file($filenameb, "a: 2\n");
+        chown 1000, 1000, $filenameb;
+        my ($fh2b, $filename2b) = tempfile();
+        unlink $filename2b; eval { symlink $filenameb, $filename2b };
+
+        my $conf0b = Config::Tree::File->new(path=>$filename2b, allow_symlink=>0);
+        my $conf1b = Config::Tree::File->new(path=>$filename2b, allow_symlink=>1);
+        my $conf2b = Config::Tree::File->new(path=>$filename2b, allow_symlink=>2, allow_different_owner=>1);
+
+        dies_ok (sub { $conf0b->get("a") }, "allow_symlink=0, read2");
+        dies_ok (sub { $conf1b->get("a") }, "allow_symlink=1, read2");
+        lives_ok(sub { $conf2b->get("a") }, "allow_symlink=2, read2");
+    };
+};
+
+# XXX file_mode
+
+SKIP: {
+    skip "must run as root to test allow_different_owner", 2 unless $> == 0;
+    chown 1000, 1000, $filename;
+    my $confa = Config::Tree::File->new(path=>$filename);
+    my $confb = Config::Tree::File->new(path=>$filename, allow_different_owner=>1);
+    dies_ok (sub { $confa->get("a") }, "allow_different_owner=0, read1");
+    lives_ok(sub { $confb->get("a") }, "allow_different_owner=1, read1");
+};
 
 # hash key prefix is tested by CT::Var
 

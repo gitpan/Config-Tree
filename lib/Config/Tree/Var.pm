@@ -86,6 +86,7 @@ validated against this schema using Data::Schema.
 sub BUILD {
     my ($self) = @_;
     die "tree must be specified" unless defined($self->tree);
+    $self->name("var") unless $self->name;
 }
 
 sub _get_tree {

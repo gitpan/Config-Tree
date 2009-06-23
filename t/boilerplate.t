@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 12;
+use Test::More tests => 13;
 
 sub not_in_file_ok {
     my ($filename, %regex) = @_;
@@ -51,6 +51,7 @@ TODO: {
   module_boilerplate_ok('lib/Config/Tree.pm');
 
   module_boilerplate_ok('lib/Config/Tree/Base.pm');
+  module_boilerplate_ok('lib/Config/Tree/BaseFS.pm');
   module_boilerplate_ok('lib/Config/Tree/CmdLine.pm');
   module_boilerplate_ok('lib/Config/Tree/DBI.pm');
   module_boilerplate_ok('lib/Config/Tree/Dir.pm');

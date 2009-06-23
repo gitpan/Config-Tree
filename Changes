@@ -1,4 +1,14 @@
 Revision history for Config-Tree
 
+0.02    2009-06-22
+        - Update requirement to Data::PrefixMerge 0.05, Data::Schema 0.06
+        - yaml_module property in CT::Base to choose YAML module
+        - standardize on YAML::XS instead of YAML
+        - CT::{File,Dir}: remove check_owner property, replace with allow_different_owner
+        - CT::File: now also has allow_symlink and allow_different_owner properties
+        - CT::{File,Dir}: safer symlink checking (check symlinks *after* open())
+        - CT::{File,Dir}: allow_symlink can now be 0 (disallow), 1 (allow same owner), or 2 (allow)
+        - CT::{File,Dir}: add dir_mode and file_mode properties
+
 0.01    2009-06-17
         - First release

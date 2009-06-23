@@ -39,7 +39,6 @@ use Moose;
 extends 'Config::Tree::File';
 use File::Slurp;
 use Data::PrefixMerge;
-use YAML;
 
 =head1 ATTRIBUTES
 
@@ -108,8 +107,7 @@ sub _resolve_key {
 
 sub _load_file {
     my ($self) = @_;
-    my $content = read_file($self->path);
-    my $hh = Load($content);
+    my $hh = $self->_safe_read_yaml("");
     die "config must be hashref" unless ref($hh) eq 'HASH';
     $self->_tree($hh);
     $self->_resolve_key($_) for keys %$hh;

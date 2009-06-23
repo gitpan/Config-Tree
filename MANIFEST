@@ -4,6 +4,7 @@ Makefile.PL
 README
 lib/Config/Tree.pm
 lib/Config/Tree/Base.pm
+lib/Config/Tree/BaseFS.pm
 lib/Config/Tree/File.pm
 lib/Config/Tree/Dir.pm
 lib/Config/Tree/Env.pm

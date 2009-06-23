@@ -51,20 +51,14 @@ Config::Tree::Dir - Read configuration tree from a directory
 =cut
 
 use Moose;
-extends 'Config::Tree::Base';
-use Fcntl ':mode';
+extends 'Config::Tree::BaseFS';
 use File::Path;
-use File::Slurp;
 use Tie::Cache;
-use YAML::XS;
 
 =head1 ATTRIBUTES
 
 =cut
 
-has path => (is => 'rw');
-has allow_symlink => (is => 'rw', default => 0);
-has check_owner => (is => 'rw', default => 1);
 has content_as_yaml => (is => 'rw', default => 0);
 
 has include_file_re => (is => 'rw');
@@ -92,16 +86,14 @@ C<ro>. Optional, default is 0. Whether we should disallow set() and save().
 
 =item *
 
-C<allow_symlink>. Optional, default is 0. When is set to 0, then all symlinks
-will be ignored. This is related to security when superuser/root is dealing with
-user-created config dirs.
+C<allow_symlink>. Default is 1 (only allow if owner matches). See
+L<Config::Tree::BaseFS> for more information.
 
 =item *
 
-C<check_owner>. Optional, default is 1. When set to 1, then all files/dirs in
-the config directory must either be created by superuser/root or by config dir
-owner, otherwise it will be ignored. This is related to security when
-superuser/root is dealing with user-created config dirs.
+C<allow_different_owner>. Optional, default is 0 (don't allow files/dirs with
+different owner as the running user). See L<Config::Tree::BaseFS> for more
+information.
 
 =item *
 
@@ -142,7 +134,7 @@ when retrieving file contents:
 
 sub BUILD {
     my ($self) = @_;
-    die "path must be specified" unless defined($self->path);
+    $self->name("dir ".$self->path) unless $self->name;
 }
 
 # read a file. fspath0 is an "absolute" path relative to config dir. so if config
@@ -151,50 +143,30 @@ sub BUILD {
 
 sub _read_file {
     my ($self, $fspath0) = @_;
-    die "_read_file: fspath0 must start with / and cannot contain .. or .!"
-      if $fspath0 !~ m!^/! || $fspath0 =~ m!/\.\.?(\z|/)!;
-    my $fspath = $self->path. $fspath0;
-    my $fc = read_file($fspath);
     if ($self->content_as_yaml) {
-        eval { $fc = Load($fc) };
-        if ($@) {
-            warn "_read_file: $fspath is not a valid YAML document, setting to undef instead";
-            return;
-        }
+        return $self->_safe_read_yaml($fspath0);
     } else {
+        my $fc = $self->_safe_read_file($fspath0);
         my $binary = $fc =~ /[^\x09\x0a\x0d\x20-\x7f]/;
         if ($fc eq '') {
             $fc = 1;
         } elsif (!$binary) {
             $fc =~ s/[\x0a\x0d]+\z//s;
         }
+        return $fc;
     }
-    $fc;
 }
 
 # recursively read all config files/subdirs
 
 sub _read_config0 {
     my ($self, $fspath0) = @_;
-    die "_read_file: fspath0 `$fspath0` must start with / and cannot contain .. or .!"
+    die "_read_config0: fspath0 `$fspath0` must start with / and cannot contain .. or .!"
       if $fspath0 !~ m!^/! || $fspath0 =~ m!/\.\.?(\z|/)!;
     my $fspath = $self->path. $fspath0;
 
     my $res = {};
-    if (!$self->allow_symlink && (-l $fspath)) {
-        warn "_read_config0: $fspath is a symlink, skipped";
-        return $res;
-    }
     die "_read_config0: $fspath is not a directory" unless -d $fspath;
-    my ($confdir_owner, $owner);
-    if ($self->check_owner) {
-        $confdir_owner = (stat $self->path)[4];
-        $owner = (stat $fspath)[4];
-        if ($owner != 0 && $owner != $confdir_owner) {
-            warn "_read_config0: $fspath is not owned by root/confdir owner, skipped";
-            return $res;
-        }
-    }
     local *D;
     unless (opendir D, $fspath) {
         warn "_read_config0: $fspath cannot be read: $!";
@@ -208,19 +180,12 @@ sub _read_config0 {
             warn "_read_config0: $fspath/$e can't be stat'ed, skipped";
             next;
         }
-        #if (!$self->allow_symlink && ($st[2] & S_IFLNK)) {
         if (!$self->allow_symlink && (-l "$fspath/$e")) {
+            # for allow_symlink=1, owner sameness will be checked later by _safe_read_file.
+            # it's not really proper, but ok for now.
             warn "_read_config0: $fspath/$e is a symlink, skipped";
             next;
         }
-        if ($self->check_owner) {
-            $owner = $st[4];
-            if ($owner != 0 && $owner != $confdir_owner) {
-                warn "_read_config0: $fspath/$e is not owned by root/confdir owner, skipped";
-                next;
-            }
-        }
-        #if ($st[2] & 0100000) {
         my $fspath0b = $fspath0 . ($fspath0 =~ m!/$! ? $e : "/$e");
         if (-d "$fspath/$e") {
             $res->{$e} = $self->_read_config0($fspath0b);
@@ -290,14 +255,6 @@ sub get_tree_for {
         if (!$self->allow_symlink && (-l $fspath)) {
             warn "get_tree_for: $fspath is a symlink, skipped";
             last;
-        }
-        my ($confdir_owner, $owner);
-        if ($self->check_owner) {
-            $confdir_owner = (stat $self->path)[4];
-            $owner = (stat $fspath)[4];
-            if ($owner != 0 && $owner != $confdir_owner) {
-                warn "get_tree_for: $fspath is not owned by root/confdir owner";
-            }
         }
         last unless (-d $fspath);
         $fspath0 .= ($fspath0 =~ m!/$! ? $_ : "/$_");
@@ -379,9 +336,7 @@ sub _set_or_unset {
                 $tree,
                 "/".join(map {$p[$_]} $i+1..(@p-1)).$n,
                 $is_set ? $val : undef);
-            write_file($fspath,
-                       "# Written by Config::Tree::Dir on ".scalar(localtime)."\n" .
-                       Dump($tree));
+            $self->_safe_mkyaml($fspath, $tree);
             return $oldval;
         }
         if ((-e $fspath) && !(-d $fspath)) {
@@ -389,7 +344,7 @@ sub _set_or_unset {
         }
         unless (-d $fspath) {
             #print "mkdir($fspath)\n";
-            mkdir $fspath, 0755 or die "_set_or_unset: can't mkdir $fspath: $!";
+            mkdir $fspath, $self->dir_mode or die "_set_or_unset: can't mkdir $fspath: $!";
         }
         do { $fspath0 .= ($fspath0 =~ m!/$! ? $p[$i] : "/$p[$i]"); $fspath .= "/$p[$i]" } if $i<@p;
     }
@@ -410,7 +365,11 @@ sub _set_or_unset {
             warn "_set_or_unset: Setting undef is not possible when content_as_yaml=0, setting to 0 instead";
             $val = 0;
         }
-        write_file($fspath, ($self->content_as_yaml ? Dump($val) : $val));
+        if ($self->content_as_yaml) {
+            $self->_safe_mkyaml($tree_path, $val);
+        } else {
+            $self->_safe_mkfile($tree_path, $val);
+        }
     }
 
     # flush cache

@@ -11,10 +11,9 @@ test_requires 'Test::Exception';
 test_requires 'File::Temp';
 
 requires 'Moose';
-requires 'Data::PrefixMerge';
-requires 'Data::Schema';
+requires 'Data::PrefixMerge' => '0.05';
+requires 'Data::Schema' => '0.06';
 requires 'File::Slurp';
-requires 'YAML'; # XXX or YAML::Syck, or YAML::XS?
 requires 'YAML::XS'; # YAML always sucks, it's too strict for CT::CmdLine
 requires 'Tie::Cache'; # for CT::Dir
 

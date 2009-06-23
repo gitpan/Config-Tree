@@ -6,7 +6,7 @@ use Test::More tests => 23;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
-use YAML;
+use YAML::XS;
 
 BEGIN {
     use_ok('Config::Tree::Var');

@@ -2,7 +2,7 @@ package Config::Tree::Multi;
 
 =head1 NAME
 
-CT::Multi - Access multiple config trees as a single tree
+Config::Tree::Multi - Access multiple config trees as a single tree
 
 =head1 SYNOPSIS
 
@@ -195,7 +195,7 @@ extends 'Config::Tree::Base';
 
 has trees => (is => 'rw', default => sub { [] });
 has trees_sub => (is => 'rw');
-has _merger => (is => 'rw', default => sub { my $dm = Data::PrefixMerge->new; $dm->config->{preserve_prefix} = 1; $dm });
+has _merger => (is => 'rw', default => sub { my $dm = Data::PrefixMerge->new; $dm->config->{preserve_keep_prefix} = 1; $dm });
 has _merge_cache => (is => 'rw', default => sub { my %tie_cache; tie %tie_cache, 'Tie::Cache', 10; \%tie_cache } );
 
 =head1 METHODS
@@ -338,7 +338,7 @@ sub add_cmdline {
     push @{ $self->trees }, ["/", Config::Tree::CmdLine->new(%opts)];
 }
 
-=head2 add_vars($tree, %opts)
+=head2 add_var($tree, %opts)
 
 Add Config::Tree::Var object to the trees. Options are actually arguments to the
 CT::Var's constructor.

@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 77;
+use Test::More tests => 84;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
@@ -138,21 +138,65 @@ ok(!defined($conf->get("/a/b/c/d/e/f")), 'hash_prefix c (content_yaml=0)');
 
 
 
-# --- allow_symlink 0 ---
+# --- allow_symlink ---
 
 my $dirname = tempdir(CLEANUP=>1);
 chdir $dirname;
-write_file("$dirname/a", "foo");
-eval { symlink ("a", "l") };
+write_file("a", "foo");
 SKIP: {
-    skip "symlink() not supported", 4 if $@;
-    $conf = Config::Tree::Dir->new(path => $dirname);
-    is($conf->get("a"), "foo", "symlink 1a");
-    ok(!defined($conf->get("l")), "symlink 1b");
-    $conf = Config::Tree::Dir->new(path => $dirname, allow_symlink=>1);
-    is($conf->get("a"), "foo", "symlink 2a");
-    is($conf->get("l"), "foo", "symlink 2b");
+    eval { symlink ("a", "l") };
+    skip "symlink() not supported", 6+3 if $@;
+
+    my $conf0 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>0, ro=>0);
+    my $conf1 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>1, ro=>0);
+    my $conf2 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>2, ro=>0);
+
+    ok(!defined($conf0->get("l")), "allow_symlink=0, read1");
+    is($conf1->get("l"), "foo", "allow_symlink=1, read1");
+    is($conf2->get("l"), "foo", "allow_symlink=2, read1");
+
+    # symlinks are ok here because we unlink+create
+    $conf0->set("l", "bar");
+    is($conf0->get("l"), "bar", "allow_symlink=0, write1");
+    $conf1 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>1, ro=>0); # defeat cache
+    is($conf1->get("l"), "bar", "allow_symlink=1, write1");
+    $conf2 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>2, ro=>0); # defeat cache
+    is($conf2->get("l"), "bar", "allow_symlink=2, write1");
+
+    SKIP: {
+        skip "must run as root to test allow_different_owner", 3 unless $> == 0;
+
+        write_file("a2", "foo2");
+        eval { symlink ("a2", "l2") };
+        chown 1000, 1000, "a2";
+
+        $conf0 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>0, allow_different_owner=>1);
+        $conf1 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>1, allow_different_owner=>1);
+        $conf2 = Config::Tree::Dir->new(path => $dirname, allow_symlink=>2, allow_different_owner=>1);
+
+        ok(!defined($conf0->get("l2")), "allow_symlink=0, read different_owner symlink");
+        dies_ok(sub { $conf1->get("l2") }, "allow_symlink=1, read different_owner symlink");
+        is($conf2->get("l2"), "foo2", "allow_symlink=2, read different_owner symlink");
+    };
 };
+
+
+
+# --- allow_different_owner ---
+
+SKIP: {
+    skip "must run as root to test allow_different_owner", 2 unless $> == 0;
+    write_file("d", "baz");
+    chown 1000, 1000, "d";
+    my $confa = Config::Tree::Dir->new(path=>$dirname, allow_symlink=>2);
+    my $confb = Config::Tree::Dir->new(path=>$dirname, allow_symlink=>2, allow_different_owner=>1);
+    dies_ok (sub { $confa->get("d") }, "allow_different_owner=0, read1");
+    lives_ok(sub { $confb->get("d") }, "allow_different_owner=1, read1");
+};
+
+
+
+# XXX file_mode, dir_mode
 
 
 
@@ -269,7 +313,5 @@ isnt("@t1", "@t2", "cache 5"); # cache is flushed after unset inside cache tree
 $conf->set("/a2", 3);
 @t3 = $conf->get_tree_for("/a/b/c", undef);
 is("@t2", "@t3", "cache 6"); # cached is not flushed after set outside cache tree
-
-# --- XXX check_owner ---
 
 # exclude_path_re, include_path_re is tested by CT::Var

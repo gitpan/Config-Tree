@@ -34,15 +34,12 @@ Config::Tree::File - Read configuration tree from a YAML file
 =cut
 
 use Moose;
-extends 'Config::Tree::Base';
-use File::Slurp;
-use YAML;
+extends 'Config::Tree::BaseFS';
 
 =head1 ATTRIBUTES
 
 =cut
 
-has path => (is => 'rw');
 has _mtime => (is => 'rw');
 has _tree => (is => 'rw');
 has _loaded => (is => 'rw', default => 0);
@@ -84,13 +81,14 @@ will be validated against this schema using Data::Schema.
 
 sub BUILD {
     my ($self) = @_;
-    die "path must be specified" unless defined($self->path);
+    # immediately load
+    $self->get_tree_for('/');
+    $self->name("file ".$self->path) unless $self->name;
 }
 
 sub _load_file {
     my ($self) = @_;
-    my $content = read_file($self->path);
-    my $res = Load($content);
+    my $res = $self->_safe_read_yaml("");
     die "config must be hashref" unless ref($res) eq 'HASH';
     $res;
 }
@@ -136,12 +134,9 @@ thrown if the config does not validate.
 =cut
 
 sub _save {
-    my ($self, $new_path) = @_;
-    my $path = $new_path || $self->path;
+    my ($self) = @_;
     return unless $self->_validate_tree($self->_tree);
-    write_file($path,
-               "# Saved by Config::Tree::File on ".scalar(localtime)."\n" .
-               Dump($self->_tree));
+    $self->_safe_mkyaml("", $self->_tree);
     $self->_mtime((stat $self->path)[9]);
 }
 

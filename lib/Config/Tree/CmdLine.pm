@@ -85,6 +85,7 @@ sub BUILD {
     my ($self) = @_;
     # immediately load
     $self->get_tree_for('/');
+    $self->name("cmdline") unless $self->name;
 }
 
 sub _get_tree {
