@@ -42,10 +42,10 @@ has exclude_path_re => (is => 'rw');
 =head2 get_tree_for($wanted_path)
 
 Will be called whenever the tree is wanted (e.g. by get()). Should return an
-list ($tree_path, $tree, $mtime). For small trees that are loaded at once,
-$tree_path will be '/' (meaning the whole tree is retrieved). For large trees,
-when $wanted_path = '/foo/bar', get_tree_for() might return $tree_path = '/foo'
-which means only the '/foo' branch is loaded.
+list ($tree_path, $tree, $mtime). For small trees that are loaded entirely into
+memory, $tree_path will be '/' (meaning the whole tree is retrieved). For large
+trees, when $wanted_path = '/foo/bar', get_tree_for() might return $tree_path =
+'/foo' which means only the '/foo' branch is loaded.
 
 In other words, $tree_path can be a parent of $wanted_path. get_tree_for() is
 called with $wanted_path argument to allow each source to only return a subtree.

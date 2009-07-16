@@ -1,5 +1,9 @@
 Revision history for Config-Tree
 
+0.03    2009-07-16
+        - implement CT::Env
+        - some minor doc fixes
+
 0.02    2009-06-22
         - Update requirement to Data::PrefixMerge 0.05, Data::Schema 0.06
         - yaml_module property in CT::Base to choose YAML module

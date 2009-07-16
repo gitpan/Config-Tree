@@ -23,13 +23,13 @@ t/05-dir.t
 t/06-multi.t
 t/07-yamlhashdir.t
 t/08-yamlhashfile.t
+t/09-env.t
 t/pod.t
 t/boilerplate.t
 t/pod-coverage.t
 t/configs/file1
 t/configs/schema1
 t/configs/schema1b
-t/configs/dir1
 t/configs/dir1/a
 t/configs/dir1/empty
 t/configs/dir1/h/i

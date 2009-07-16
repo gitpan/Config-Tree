@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 21;
+use Test::More tests => 33;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
@@ -66,6 +66,29 @@ is($conf->get('j'), 2, 'opt followed by another opt 2');
 $conf = Config::Tree::CmdLine->new();
 is($conf->get('i'), 3, 'opt at the end 1');
 is($conf->get('j'), 1, 'opt at the end 2');
+
+# boolean --foo does not take an argument
+@ARGV = ('--i', '3', '--j', '2');
+$conf = Config::Tree::CmdLine->new(schema=>[hash => {keys => {i=>"bool", j=>"int"}}]);
+is($conf->get('i'), 1, 'boolean opt does not take argument 1a');
+is($conf->get('j'), 2, 'boolean opt does not take argument 1b');
+is_deeply(\@ARGV, [3], 'boolean opt does not take argument 1c');
+@ARGV = ('--i', '3');
+$conf = Config::Tree::CmdLine->new(schema=>[hash => {keys => {i=>"bool", j=>"int"}}]);
+is_deeply(\@ARGV, [3], 'boolean opt does not take argument 2a');
+
+# --nofoo
+@ARGV = ('--noi', 1, '--noj', 1, '--nok/l', '--k/nol');
+$conf = Config::Tree::CmdLine->new(schema=>[hash => {keys => {i=>"bool", noj=>"int",
+                                                              k=>[hash=>{keys=>{l=>"bool"}}] }}]);
+is($conf->get('i'), 0, 'boolean --noopt for opt 1a');
+ok(!defined($conf->get('noi')), 'boolean --noopt for opt 1b');
+is($conf->get('noj'), 1, 'boolean --noopt for opt 1c');
+ok(!defined($conf->get('j')), 'boolean --noopt for opt 1d');
+is($conf->get('nok/l'), 1, 'boolean --noopt for opt 1e');
+is($conf->get('k/l'), 0, 'boolean --noopt for opt 1f');
+ok(!defined($conf->get('k/nol')), 'boolean --noopt for opt 1g');
+is_deeply(\@ARGV, [1], 'boolean --noopt for opt 1h');
 
 # autovivify
 @ARGV = ('--a/b/c/d/e/f=foo');

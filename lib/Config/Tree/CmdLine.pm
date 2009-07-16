@@ -9,7 +9,7 @@ Config::Tree::CmdLine - Read configuration tree from command line options
  # in shell:
 
  % perl script.pl --foo/bar=3
- % perl script.pl --foo='{bar=>3}'; # same thing
+ % perl script.pl --foo='{bar: 3}'; # same thing
 
  # in script.pl:
 
@@ -94,6 +94,8 @@ sub _get_tree {
     unless ($self->_loaded) {
         my $tree = {};
 
+        my $key_schemas = $self->_get_all_key_schemas;
+
         my $i = 0;
         my @non_opts;
         while ($i < @ARGV) {
@@ -104,22 +106,33 @@ sub _get_tree {
             my ($name, $eq, $val) = $a =~ m!^--/?(\w+(?:/\w+)*)(=)?(.*)!s
                 or die "Invalid command line option: $a";
 
+            my $p = $name =~ m!^/! ? $name : "/$name";
+            my $ks = $key_schemas->{$p};
+            my $takes_arg = !($ks && $ks->[0]{type} =~ /^(bool|boolean)$/);
 
+            # --nofoo (or --foo/nobar) for boolean
+            my ($m1, $m2) = $p =~ m!(.*)/no(\w+)$!;
+            if (defined($m2) && !$ks && $key_schemas->{"$m1/$m2"} &&
+                $key_schemas->{"$m1/$m2"}[0]{type} =~ /^(?:bool|boolean)$/) {
+                $name = "$m1/$m2"; $name =~ s!^/!!;
+                $val = 0;
+            }
             # --foo followed by a non-opt, becomes --foo=NONOPT
-            if (!$eq && $i < @ARGV && $ARGV[$i] !~ /^--/) {
+            elsif ($takes_arg && !$eq && $i < @ARGV && $ARGV[$i] !~ /^--/) {
                 $val = $ARGV[$i];
                 $i++;
             }
+
             if (length($val)) {
                 eval { $val = Load($val) };
-                die "Invalid command line option: $a ($@)" if $@;
+                die "YAML parse error in command line option $a: $@" if $@;
             } else {
                 # --foo followed by other opt, or --foo at the end => --foo=1
                 $val = 1;
             }
 
             if ($name eq 'help') {
-                print $self->usage();
+                print $self->usage($key_schemas);
                 print "\n";
                 exit 0;
             }
@@ -158,25 +171,50 @@ Prints usage information. Requires schema be specified.
 =cut
 
 sub usage {
-    my ($self) = @_;
-    if (!$self->schema) {
-        return "Sorry, help is not available.";
-    }
-    my $v = $self->validator;
-    my $s = $v->normalize_schema($self->schema);
-    my $ah = $v->merge_attr_hashes($s->{attr_hashes});
-    my $h1 = $ah->{result}[0]{keys};
-    if (!$h1) { return "Sorry, no options is known." }
+    my ($self, $key_schemas) = @_;
+    $key_schemas ||= $self->_get_all_key_schemas;
+    if (!(keys %$key_schemas)) { return "Sorry, no options is known." }
     my $u = '';
     $u .= "Options:\n";
-    for my $k (sort keys %$h1) {
-        next unless $k =~ /^\w+$/;
-        my $h2 = $v->normalize_schema($h1->{$k});
-        $u .= " --$k ($h2->{type})";
-        $u .= "  ".$h1->{"$k.usage"} if $h1->{"$k.usage"};
+    for my $k (sort keys %$key_schemas) {
+        my ($s, $u2) = @{ $key_schemas->{$k} };
+        $k =~ s!^/!!;
+        $u .= " --$k ($s->{type})";
+        $u .= "  $u2" if $u2;
         $u .= "\n";
     }
     $u;
+}
+
+# search schema for hashes and then list all its key schemas, recursively. as
+# well as normalize the schemas into third form. return an empty list if there
+# is no schema or no keys schemas.
+
+sub _get_all_key_schemas {
+    my ($self, $prefix, $schema, $res) = @_;
+
+    $prefix ||= "";
+    $schema ||= $self->schema;
+    $res ||= {};
+
+    if ($schema) {
+        my $v = $self->validator;
+        my $s = $v->normalize_schema($schema);
+        my $mr = $v->merge_attr_hashes($s->{attr_hashes});
+        for my $ah (@{ $mr->{result} }) {
+            next unless ref($ah->{keys}) eq 'HASH';
+            for my $hk (keys %{ $ah->{keys} }) {
+                my $ss = $v->normalize_schema($ah->{keys}{$hk});
+                my $k = $hk; $k =~ s/^[*+.^!-]//;
+                next unless $k =~ /^\w+$/;
+                my $pk = "$prefix/$k";
+                next if exists $res->{$pk};
+                $res->{$pk} = [$ss, $ah->{keys}{"$k.usage"} || ''];
+                $self->_get_all_key_schemas($pk, $ss, $res);
+            }
+        }
+    }
+    $res;
 }
 
 sub _format_validation_error {

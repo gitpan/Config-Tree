@@ -352,9 +352,9 @@ sub add_var {
     push @{ $self->trees }, ["/", Config::Tree::Var->new(%opts)];
 }
 
-=head2 add_config_trees($ct, ...)
+=head2 add_config_tree($ct, ...)
 
-Add Config::Tree objects directly to the trees.
+Add Config::Tree object.
 
 =cut
 
