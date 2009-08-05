@@ -87,6 +87,13 @@ Which YAML module to use. Default is 'YAML::XS', but will fall back to 'YAML'
 
 has yaml_module => (is => 'ro', default => 'YAML::XS');
 
+=head2 must_exist (rw, default 0)
+
+If set to 1, then the file/dir must exist and an error is thrown if it doesn't.
+
+=cut
+
+has must_exist => (is => 'rw', default => 0);
 
 =head1 METHODS
 

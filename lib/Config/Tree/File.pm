@@ -75,6 +75,11 @@ be retrieved. Takes precedence over C<exclude_path_re>.
 C<schema>. Optional. When specified, after the tree is retrieved from file, it
 will be validated against this schema using Data::Schema.
 
+=item *
+
+C<must_exist>. Optional, default 0. If set to 1, then the file/dir must exist
+and an error is thrown if it doesn't.
+
 =back
 
 =cut
@@ -100,6 +105,8 @@ sub _get_tree {
             my $res = $self->_load_file();
             $self->_tree($res);
             $self->_mtime((stat $self->path)[9]);
+        } elsif ($self->must_exist) {
+            die "config file doesn't exist";
         } else {
             $self->_tree(undef);
             $self->_mtime(-1);

@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 84;
+use Test::More tests => 85;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
@@ -313,5 +313,11 @@ isnt("@t1", "@t2", "cache 5"); # cache is flushed after unset inside cache tree
 $conf->set("/a2", 3);
 @t3 = $conf->get_tree_for("/a/b/c", undef);
 is("@t2", "@t3", "cache 6"); # cached is not flushed after set outside cache tree
+
+# must_exist
+my $nonexist = 0;
+while (-e "/$nonexist") { $nonexist++ }
+#lives_ok (sub { $conf = Config::Tree::Dir->new(path=>$nonexist               )->get("a") }, "must_exist 1");
+dies_ok  (sub { $conf = Config::Tree::Dir->new(path=>$nonexist, must_exist=>1)->get("a") }, "must_exist 2");
 
 # exclude_path_re, include_path_re is tested by CT::Var

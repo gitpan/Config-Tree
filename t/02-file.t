@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 37;
+use Test::More tests => 39;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
@@ -154,6 +154,12 @@ SKIP: {
     dies_ok (sub { $confa->get("a") }, "allow_different_owner=0, read1");
     lives_ok(sub { $confb->get("a") }, "allow_different_owner=1, read1");
 };
+
+# must_exist
+my $nonexist = 0;
+while (-e "/$nonexist") { $nonexist++ }
+lives_ok (sub { $conf = Config::Tree::File->new(path=>$nonexist               )->get("a") }, "must_exist 1");
+dies_ok  (sub { $conf = Config::Tree::File->new(path=>$nonexist, must_exist=>1)->get("a") }, "must_exist 2");
 
 # hash key prefix is tested by CT::Var
 

@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 10;
+use Test::More tests => 11;
 use Test::Exception;
 use FindBin '$Bin';
 use File::Slurp;
@@ -32,6 +32,8 @@ is($conf->get("I"), 1, "env_lowercase 1");
 ok(!defined($conf->get("i")), "env_lowercase 2");
 
 # env_as_yaml=0
+$conf = Config::Tree::Env->new(env_as_yaml=>0);
+is($conf->get("j/k"), '{l: 3}', "env_lowercase 1");
 
 # schema when loading
 %ENV = ('CONFIG_I', 'a');

@@ -1,0 +1,44 @@
+#!perl -w
+
+use Config::Tree::CmdLine;
+use strict;
+
+my $units = [qw/kg g   m cm/];
+my $conversions = {
+   "kg->g" => 1000,
+   "g->kg" => 0.001,
+   "m->cm" => 100,
+   "cm->m" => 0.01,
+};
+
+my $cmd = Config::Tree::CmdLine->new(
+   schema => [hash => {
+       "ui.description" => "A unit conversion program",
+       keys => {
+           'amount' => [float => {"ui.order"=>0, "ui.description"=>"Amount to be converted"}],
+           'from' => [str => {one_of => $units, required=>1, "ui.order"=>1, "ui.description"=>"Unit to convert from"}],
+           'to'   => [str => {one_of => $units, required=>1, "ui.order"=>2, "ui.description"=>"Unit to convert to"}],
+       },
+
+       # we also need this to make sure required keys exist. the required=>1 in
+       # each key is to make sure the value is not undef.
+       required_keys => [qw/from to/],
+       "required_keys.errmsg" => "Please specify --from and --to",
+
+                       }],
+   short_options => {
+       h => 'help',
+       '?' => 'help',
+   },
+);
+
+my $amount = $cmd->get('amount');
+$amount = 1 if !defined($amount);
+
+my $from = $cmd->get('from');
+my $to   = $cmd->get('to');
+
+my $c = $conversions->{$from."->".$to};
+if (!$c) { die "Can't convert from $from to $to" }
+
+printf "%s %s equals %s %s\n", $amount, $from, $amount*$c, $to;

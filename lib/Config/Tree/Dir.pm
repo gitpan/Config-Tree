@@ -128,6 +128,11 @@ when retrieving file contents:
 - zero-length files will be retrieved as 1. This is useful for flag files (which
   indicated active/true when exist and nonactive/false when do not).
 
+=item *
+
+C<must_exist>. Optional, default 0. If set to 1, then the file/dir must exist
+and an error is thrown if it doesn't.
+
 =back
 
 =cut
@@ -248,6 +253,7 @@ sub get_tree_for {
     my @p = grep {length} split m!/+!, $wanted_tree_path;
     my $fspath0 = "/";
     my $fspath = $self->path;
+    die "config dir doesn't exist" if $self->must_exist && !(-e $fspath);
     my @p2;
     for (@p) {
         last unless (-e $fspath);

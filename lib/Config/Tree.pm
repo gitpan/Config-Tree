@@ -13,11 +13,11 @@ Config::Tree - Access various configuration as a single Unix filesystem-like tre
 
 =head1 VERSION
 
-Version 0.03dev
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 =head1 SYNOPSIS
 
