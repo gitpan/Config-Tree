@@ -1,214 +1,354 @@
 package Config::Tree;
+{
+  $Config::Tree::VERSION = '0.22';
+}
+BEGIN {
+  $Config::Tree::AUTHORITY = 'cpan:TEX';
+}
+# ABSTRACT: a tree-based versatile config handler
 
-use vars qw(@ISA @EXPORT);
-require Exporter;
-@ISA = qw(Exporter);
-@EXPORT = qw(get_config);
+use 5.010_000;
+use mro 'c3';
+use feature ':5.10';
 
-use Config::Tree::Multi;
+use Moose;
+use namespace::autoclean;
+
+use IO::Handle;
+use autodie;
+
+use Config::Any;
+use Config::Tiny;
+use Hash::Merge;
+use Data::Dumper;
+use Try::Tiny;
+
+extends 'Data::Tree';
+
+has 'locations' => (
+    'is'       => 'rw',
+    'isa'      => 'ArrayRef[Str]',
+    'required' => 1,
+);
+
+has 'last_ts' => (
+    'is'      => 'rw',
+    'isa'     => 'Num',
+    'default' => 0,
+);
+
+has 'files_read' => (
+    'is'    => 'rw',
+    'isa'   => 'ArrayRef[Str]',
+    'default' => sub { [] },
+);
+
+sub config {
+    my $self = shift;
+    my $arg  = shift;
+
+    if ( defined($arg) ) {
+        return $self->data($arg);
+    }
+    else {
+        return $self->data();
+    }
+} ## end sub config
+
+sub _init_debug {
+    my $self = shift;
+
+    if($ENV{'CONFIG_TREE_DEBUG'}) {
+        return 1;
+    }
+
+    return 0;
+}
+
+############################################
+# THIS METHOD IS NOT PART OF OUR PUBLIC API!
+# Usage      :
+# Purpose    :
+# Returns    :
+# Parameters :
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+# THIS METHOD IS NOT PART OF OUR PUBLIC API!
+sub _init_data {
+    my $self = shift;
+
+    # glob locations and conf.d dirs!
+    my @files        = ();
+    my @legacy_files = ();
+    foreach my $loc ( @{ $self->locations() } ) {
+        if ( -d $loc ) {
+            foreach my $file ( glob( $loc . '/*.conf' ) ) {
+                if ( $self->_is_legacy_config($file) ) {
+                    push( @legacy_files, $file );
+                }
+                else {
+                    push( @files, $file );
+                }
+            } ## end foreach my $file ( glob( $loc...))
+            ## no critic (ProhibitMismatchedOperators)
+            if ( -d $loc . '/conf.d' ) {
+                ## use critic
+                foreach my $file ( glob( $loc . '/conf.d/*.conf' ) ) {
+                    if ( $self->_is_legacy_config($file) ) {
+                        push( @legacy_files, $file );
+                    }
+                    else {
+                        push( @files, $file );
+                    }
+                } ## end foreach my $file ( glob( $loc...))
+            } ## end if ( -d $loc . '/conf.d')
+        } ## end elsif ( -d $loc )
+        elsif ( -e $loc ) {
+            if ( $self->_is_legacy_config($loc) ) {
+                push( @legacy_files, $loc );
+            }
+            else {
+                push( @files, $loc );
+            }
+        } ## end if ( -e $loc )
+    } ## end foreach my $loc ( @{ $self->locations...})
+    ## no critic (RequireCheckedSyscalls)
+    print '_init_config - glob()ed these files: ' . join( q{:}, @files ) . "\n" if $self->debug();
+    print '_init_config - glob()ed these legacy files: ' . join( q{:}, @legacy_files ) . "\n" if $self->debug();
+    ## use critic
+    my $cfg = {};
+    $cfg = $self->_load_legacy_config( [@legacy_files], $cfg );
+    foreach my $file (@files) {
+        $cfg = $self->_load_config( [$file], $cfg );
+    }
+    return $cfg;
+} ## end sub _init_data
+
+sub _is_legacy_config {
+    my $self = shift;
+    my $file = shift;
+
+    my $is_legacy = 0;
+    if ( -e $file && open( my $FH, '<', $file ) ) {
+        my @lines = <$FH>;
+        close($FH);
+        foreach my $line (@lines) {
+            if ( $line =~ m/^\[/ ) {    # ini-style config, old
+                $is_legacy = 1;
+                last;
+            }
+            elsif ( $line =~ m/^\s*</ ) {    # pseudo-XML config, new
+                $is_legacy = 0;
+                last;
+            }
+        } ## end foreach my $line (@lines)
+
+    } ## end if ( -e $file && open(...))
+    return $is_legacy;
+} ## end sub _is_legacy_config
+
+sub _load_legacy_config {
+    my $self      = shift;
+    my $files_ref = shift;
+    my $cfg       = shift || {};
+
+    Hash::Merge::set_behavior('RETAINMENT_PRECEDENT');
+    foreach my $file ( @{$files_ref} ) {
+        if ( -e $file ) {
+            try {
+                my $Config = Config::Tiny::->new($file);
+                print '_load_legacy_config - Loaded ' . $file . "\n" if $self->debug();
+                $cfg = Hash::Merge::merge( $cfg, $Config );
+                ## no critic (ProhibitMagicNumbers)
+                my $last_ts = ( stat($file) )[9];
+                ## use critic
+                $self->last_ts($last_ts) if $last_ts > $self->last_ts();
+                1;
+            } ## end try
+            catch {
+                warn "Loading $file failed: $_\n" if $self->debug();
+            };
+        } ## end if ( -e $file )
+    } ## end foreach my $file ( @{$files_ref...})
+    return $cfg;
+} ## end sub _load_legacy_config
+
+sub _load_config {
+    my $self      = shift;
+    my $files_ref = shift;
+    my $ccfg      = shift || {};
+
+    ## no critic (ProhibitNoWarnings)
+    no warnings 'once';
+    ## no critic (ProhibitTwoArgOpen ProhibitBarewordFileHandles RequireBriefOpen ProhibitUnixDevNull)
+    if(!$self->debug()) {
+        open( OLD_STDERR, '>&STDERR' )
+          or die('Failed to save STDERR');
+        open( STDERR, '>', '/dev/null' )
+          or die('Failed to redirect STDERR');
+    }
+    ## use critic
+    my $cfg     = {};
+    my $success = try {
+        $cfg = Config::Any->load_files(
+            {
+                files       => $files_ref,
+                use_ext     => 1,
+                driver_args => {
+
+                    # see http://search.cpan.org/~tlinden/Config-General-2.50/General.pm
+                    General => {
+                        -UseApacheInclude      => 0,
+                        -IncludeRelative       => 0,
+                        -IncludeDirectories    => 0,
+                        -IncludeGlob           => 0,
+                        -SplitPolicy           => 'equalsign',
+                        -CComments             => 0,
+                        -AutoTrue              => 1,
+                        -MergeDuplicateBlocks  => 1,
+                        -MergeDuplicateOptions => 0,
+                        -LowerCaseNames        => 1,
+                        -UTF8                  => 1,
+                    },
+                },
+                flatten_to_hash => 1,
+            },
+        );
+        1;
+    } ## end try
+    catch {
+        print 'Loading ' . join( q{:}, @{$files_ref} ) . " failed: $_\n" if $self->debug();
+    };
+    return $ccfg unless $success;
+
+    ## no critic (ProhibitTwoArgOpen)
+    if(!$self->debug()) {
+        open( STDERR, '>&OLD_STDERR' );
+    }
+    use warnings 'once';
+    ## use critic
+    Hash::Merge::set_behavior('RETAINMENT_PRECEDENT');
+
+    # older versions of Config::Any don't know flatten_to_hash,
+    # they'll always return an array of hashes, so we'll
+    # transform them here
+    if ( ref($cfg) eq 'ARRAY' ) {
+        my $ncfg = {};
+        foreach my $c ( @{$cfg} ) {
+            foreach my $file ( keys %{$c} ) {
+                $ncfg->{$file} = $c->{$file};
+            }
+        }
+        $cfg = $ncfg;
+    } ## end if ( ref($cfg) eq 'ARRAY')
+    if ( ref($cfg) eq 'HASH' ) {
+        foreach my $file ( keys %{$cfg} ) {
+            print "_load_config - Loaded $file\n" if $self->debug();
+            push(@{$self->files_read()},$file);
+            $ccfg = Hash::Merge::merge( $ccfg, $cfg->{$file} );
+            ## no critic (ProhibitMagicNumbers)
+            my $last_ts = ( stat($file) )[9];
+            ## use critic
+            $self->last_ts($last_ts) if $last_ts > $self->last_ts();
+        } ## end foreach my $file ( keys %{$cfg...})
+    } ## end if ( ref($cfg) eq 'HASH')
+    return $ccfg;
+} ## end sub _load_config
+
+############################################
+# Usage      :
+# Purpose    :
+# Returns    :
+# Parameters :
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+sub add_config {
+    my $self = shift;
+    my $file = shift;
+
+    $self->config( Hash::Merge::merge( $self->config(), $self->_load_config( [$file] ) ) );
+    return 1;
+} ## end sub add_config
+
+############################################
+# Usage      :
+# Purpose    :
+# Returns    :
+# Parameters :
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+sub reset_config {
+    my $self = shift;
+
+    $self->config( {} );
+
+    return 1;
+} ## end sub reset_config
+## no critic (ProhibitBuiltinHomonyms)
+sub dump {
+    ## use critic
+    my $self = shift;
+
+    $Data::Dumper::Sortkeys = 1;
+    return Dumper( $self->config() );
+} ## end sub dump
+
+no Moose;
+__PACKAGE__->meta->make_immutable;
+
+1;
+
+__END__
+
+=pod
+
+=encoding utf-8
 
 =head1 NAME
 
-Config::Tree - Access various configuration as a single Unix filesystem-like tree
-
-=head1 VERSION
-
-Version 0.04
-
-=cut
-
-our $VERSION = '0.04';
+Config::Tree - a tree-based versatile config handler
 
 =head1 SYNOPSIS
 
- # in /etc/myapp.yaml:
- foo:
-   bar: 1
- baz: 2
+    use Config::Tree;
 
- # in ~/.myapp.yaml:
- foo:
-   bar: 3
-   quux: 4
+    my $cfg = Config::Tree::->new({ locations => [qw(/etc/foo)]});
+    ...
 
- # in myapp.pl:
- use Config::Tree;
- my $conf = get_config();
- printf "/foo/bar = %s\n", $conf->get('/foo/bar');
- $conf->cd('/foo');
- printf "/foo/baz = %s\n", $conf->get('baz');
- printf "/quux = %s\n", $conf->get('../quux');
+=head1 METHODS
 
- # in shell:
- % perl myapp.pl --quux=5
- /foo/bar = 3
- /foo/baz = 2
- /quux = 5
+=head2 add_config
 
- # See Config::Tree::Multi for more detailed usage. You can customize the
- # location of config files, put config in directories, arrange how values from
- # config files can be replaced/protected/reset by further files/command line
- # options, set/save config values, validate config trees using schema,
- # dynamically load ("mount") of config trees, etc.
+Parse another config file.
 
+=head2 config
 
-=head1 DESCRIPTION
+Get the whole config as an HashRef
 
-Config::Tree (CT) lets you access your various configuration (perl data
-structure, config files, config dirs, environment variables, command
-line options, even databases) as a single tree using a Unix filesystem-like
-interface.
+=head2 dump
 
-=head1 FUNCTIONS
+Stringify the whole config w/ Data::Dumper;
 
-=head2 get_config([%opts])
+=head2 reset_config
 
-Exportable. Return the singleton Config::Tree::Multi object. The first call to
-get_config() will create the object, the subsequent calls will just return the
-created object.
+Delete all configuration items.
 
-Available options:
+=head1 NAME
 
-=over 4
-
-=item *
-
-C<appname>. Optional. Files /etc/<appname>.yaml and ~/.<appname>.yaml will be
-added to configuration trees. Default is for C<appname> to be extracted from $0.
-
-=back
-
-If you want more customized behaviour (exact paths of files/dirs, whether config
-should be read-only or writable, etc) you can create your own Config::Tree
-object and then set the singleton to it using set_config(). See documentation
-of, e.g., L<Config::Tree::Multi> for more details on creating custom config
-tree.
-
-=cut
-
-my $Singleton_Conf;
-
-sub get_config {
-    my (%args) = @_;
-
-    if (!$Singleton_Conf) {
-        my $conf = Config::Tree::Multi->new();
-        $conf->schema($args{schema});
-        my $appname = $args{appname};
-        if (!defined($appname)) {
-            $appname = $0; $appname =~ s!.+/!!; $appname =~ s/\..+$//;
-            if (!length($appname)) { $appname = "app" }
-        }
-        if ($appname ne '-e') {
-            $conf->add_file("/etc/$appname.yaml");
-            $conf->add_file("$ENV{HOME}/.$appname.yaml");
-        }
-        $conf->add_cmdline(schema=>$args{schema});
-        $Singleton_Conf = $conf;
-    }
-    $Singleton_Conf;
-}
-
-=head2 set_config($ct)
-
-Set the singleton config object to $ct, which is a Config::Tree object.
-
-=cut
-
-sub set_config($) {
-    my ($ct) = @_;
-    $Singleton_Conf = $ct;
-}
-
-=head1 COMPARISON WITH OTHER CONFIG MODULES
-
-There are already a lot of config-related modules on CPAN. Here's the main
-highlights of this module:
-
-Things that are like what other modules do:
-
-- Loading and merging config values from multiple sources (config files [YAML],
-  config dirs, DBI databases, environment variables, command line options).
-
-Things that are unlike what many other modules do:
-
-- Nested (tree) config, even in command line options.
-
-- Filesystem-like interface: cd(), pushd(), popd(), pwd(),
-  get("../relative/path"), get("/abs/path"), mounting config trees to different
-  mount points, etc.
-
-- More flexible merging (merging modes). We can individually mark which config
-  should be protected from being overriden, added/concatenated, or deleted. This
-  is done with Data::PrefixMerge.
-
-- Set/save config values back to storage (config files, directories, and
-  databases).
-
-- Validation (using Data::Schema).
-
-
-=head1 SEE ALSO
-
-Among the many config-related modules on CPAN: L<App::Options>, L<Getopt::Long>.
-
-L<Config::Tree::Multi>, which is the actual class used.
-
-L<Config::Tree::CmdLine> for more information on generating --help message, etc.
+Config::Tree - Data::Tree based config handling
 
 =head1 AUTHOR
 
-Steven Haryanto, C<< <stevenharyanto at gmail.com> >>
+Dominik Schulz <dominik.schulz@gauner.org>
 
-=head1 BUGS
+=head1 COPYRIGHT AND LICENSE
 
-Please report any bugs or feature requests to C<bug-config-tree at
-rt.cpan.org>, or through the web interface at
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Config-Tree>.  I will
-be notified, and then you'll automatically be notified of progress on
-your bug as I make changes.
+This software is copyright (c) 2012 by Dominik Schulz.
 
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc Config::Tree
-
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Config-Tree>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/Config-Tree>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Config-Tree>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Config-Tree/>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
-
-=head1 COPYRIGHT & LICENSE
-
-Copyright 2009 Steven Haryanto, all rights reserved.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
-
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut
-
-1;

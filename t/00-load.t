@@ -1,20 +1,18 @@
 #!perl -T
 
-use Test::More tests => 8;
+use Test::More tests => 5;
 
 BEGIN {
-	use_ok( 'Config::Tree' );
-
-	use_ok( 'Config::Tree::Base' );
-	use_ok( 'Config::Tree::CmdLine' );
-	#use_ok( 'Config::Tree::DBI' );
-	use_ok( 'Config::Tree::Dir' );
-	use_ok( 'Config::Tree::Env' );
-	use_ok( 'Config::Tree::File' );
-	use_ok( 'Config::Tree::Var' );
-	use_ok( 'Config::Tree::YAMLHashDir' );
-	#use_ok( 'Config::Tree::YAMLHashFile' );
-
+    use_ok( 'Config::Tree::LazyConfig' ) || print "Bail out!
+";
+    use_ok( 'Config::Tree::NamedPlugins' ) || print "Bail out!
+";
+    use_ok( 'Config::Tree::OrderedPlugins' ) || print "Bail out!
+";
+    use_ok( 'Config::Tree::RequiredConfig' ) || print "Bail out!
+";
+    use_ok( 'Config::Tree' ) || print "Bail out!
+";
 }
 
 diag( "Testing Config::Tree $Config::Tree::VERSION, Perl $], $^X" );

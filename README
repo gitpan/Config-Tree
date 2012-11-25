@@ -1,98 +1,34 @@
-Config-Tree
+NAME
+    Config::Tree - a tree-based versatile config handler
 
-Config::Tree lets you access your various configuration (Perl data structure,
-config files, config dirs, environment variables, command line options, even
-databases) as a single tree using a Unix filesystem-like interface.
+SYNOPSIS
+        use Config::Tree;
 
-There are already a lot of config-related modules on CPAN. Here's the main
-highlights of this module:
+        my $cfg = Config::Tree::->new({ locations => [qw(/etc/foo)]});
+        ...
 
-Things that are like what other modules do:
+METHODS
+  add_config
+    Parse another config file.
 
-- Loading and merging config values from multiple sources (config files [YAML],
-  config dirs, DBI databases, environment variables, command line options).
+  config
+    Get the whole config as an HashRef
 
-Things that are unlike what many other modules do:
+  dump
+    Stringify the whole config w/ Data::Dumper;
 
-- Nested (tree) config, even in command line options.
+  reset_config
+    Delete all configuration items.
 
-- Filesystem-like interface: cd(), pushd(), popd(), pwd(),
-  get("../relative/path"), get("/abs/path"), mounting config trees to different
-  mount points, etc.
+NAME
+    Config::Tree - Data::Tree based config handling
 
-- More flexible merging (merging modes). We can individually mark which config
-  should be protected from being overriden, added/concatenated, or deleted. This
-  is done with Data::PrefixMerge.
+AUTHOR
+    Dominik Schulz <dominik.schulz@gauner.org>
 
-- Set/save config values back to storage (config files, directories, and
-  databases).
+COPYRIGHT AND LICENSE
+    This software is copyright (c) 2012 by Dominik Schulz.
 
-- Validation (using Data::Schema).
+    This is free software; you can redistribute it and/or modify it under
+    the same terms as the Perl 5 programming language system itself.
 
-Simple usage example:
-
- # in /etc/myapp.yaml:
- foo:
-   bar: 1
- baz: 2
-
- # in ~/.myapp.yaml:
- foo:
-   bar: 3
-   quux: 4
-
- # in myapp.pl:
- use Config::Tree;
- my $conf = get_config();
- printf "/foo/bar = %s\n", $conf->get('/foo/bar');
- $conf->cd('/foo');
- printf "/foo/baz = %s\n", $conf->get('baz');
- printf "/quux = %s\n", $conf->get('../quux');
-
- # in shell:
- % perl myapp.pl --quux=5
- /foo/bar = 3
- /foo/baz = 2
- /quux = 5
-
-See Config::Tree::Multi for more detailed usage information. You can customize
-the location of files/dirs, etc.
-
-
-INSTALLATION
-
-To install this module, run the following commands:
-
-	perl Makefile.PL
-	make
-	make test
-	make install
-
-SUPPORT AND DOCUMENTATION
-
-After installing, you can find documentation for this module with the
-perldoc command.
-
-    perldoc Config-Tree
-
-You can also look for information at:
-
-    RT, CPAN's request tracker
-        http://rt.cpan.org/NoAuth/Bugs.html?Dist=Config-Tree
-
-    AnnoCPAN, Annotated CPAN documentation
-        http://annocpan.org/dist/Config-Tree
-
-    CPAN Ratings
-        http://cpanratings.perl.org/d/Config-Tree
-
-    Search CPAN
-        http://search.cpan.org/dist/Config-Tree/
-
-
-COPYRIGHT AND LICENCE
-
-Copyright (C) 2009 Steven Haryanto
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
